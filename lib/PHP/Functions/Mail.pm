@@ -8,7 +8,7 @@ use vars qw(@ISA @EXPORT_OK $VERSION);
 require Exporter;
 @ISA = qw(Exporter);
 @EXPORT_OK = qw(mail mb_send_mail);
-$VERSION = '0.01';
+$VERSION = '0.02';
 
 use Carp qw(carp croak);
 use Net::SMTP;
@@ -27,6 +27,33 @@ sub mail {
 
 	my $send_header;
 	my $in_subject = 0;
+	my $in_from = 0;
+
+	#From head check
+	foreach my $header (split("\n", $headers)) {
+	    unless ($header =~ /^([^:]+):(.+)$/) {
+		next;
+	    }
+	    my $name = $1;
+	    my $value = $2;
+	    my $ns_value = $value;
+	    $ns_value =~ s/[\r\n\s]/ /g;
+
+	    if (uc($name) eq 'FROM') {
+		$smtp->mail(split(",", $ns_value));
+		$in_from = 1;
+	    }
+	    $in_subject = 1 if uc($name) eq 'SUBJECT';
+	}
+	unless ($in_from) {
+	    croak "no From header";
+	    return 1;
+	}
+
+	$send_header .= "To: $to\n";
+	$send_header .= "Subject: $subject\n"unless $in_subject;
+	$smtp->to($to);
+
 	foreach my $header (split("\n", $headers)) {
 	    unless ($header =~ /^([^:]+):(.+)$/) {
 		carp "header format error: $header";
@@ -37,15 +64,11 @@ sub mail {
 	    my $ns_value = $value;
 	    $ns_value =~ s/[\r\n\s]/ /g;
 
-	    $smtp->to($to, split(",", $ns_value)) if uc($name) eq 'TO';
+	    $smtp->to(split(",", $ns_value)) if uc($name) eq 'TO';
 	    $smtp->cc(split(",", $ns_value)) if uc($name) eq 'CC';
 	    $smtp->bcc(split(",", $ns_value)) if uc($name) eq 'BCC';
-	    $smtp->mail(split(",", $ns_value)) if uc($name) eq 'FROM';
-	    $in_subject = 1 if uc($name) eq 'SUBJECT';
 	    $send_header .= "$name:$value\n";
 	}
-	$send_header .= "To: $to\n";
-	$send_header .= "Subject: $subject\n"unless $in_subject;
 	$smtp->data;
 	$body =~ s/\n\r/\n/g;
 	$smtp->datasend("$send_header\n$body");
@@ -53,6 +76,8 @@ sub mail {
 	$smtp->quit;
     };
     croak "mail error: $@" if $@;
+
+    return 0;
 }
 
 sub mb_send_mail {
@@ -92,8 +117,6 @@ sub mime_encode {
 
 1;
 __END__
-# Below is stub documentation for your module. You'd better edit it!
-
 =head1 NAME
 
 PHP::Functions::Mail - Transplant of mail function of PHP
@@ -107,12 +130,18 @@ PHP::Functions::Mail - Transplant of mail function of PHP
   #When you enhance the header and Option specification  
   #Host specifiles the smtp server (default 'localhost')
   use PHP::Functions::Mail qw(mail);
-  mail('ToAddress@example.com', 'subject', 'body of message', join("\n", 'From: from user <FromAddress@example.com>', 'Cc: CcAddress@example.com, cc user <CcAddress2@example.com>'), {Host => 'smtp.example.com'} );
+  mail('ToAddress@example.com', 'subject', 'body of message',
+    join("\n",
+      'From: from user <FromAddress@example.com>',
+      'Cc: CcAddress@example.com, cc user <CcAddress2@example.com>'),
+    {Host => 'smtp.example.com'} );
 
 
   #for Japanese
   use PHP::Functions::Mail qw(mb_send_mail);
-  mb_send_mail('Japanese Strings <ToAddress@example.com>', 'subject of Japanese Strings', 'body of Japanese message', 'From: Japanese Strings <FromAddress@example.com>');
+  mb_send_mail('Japanese Strings <ToAddress@example.com>',
+    'subject of Japanese Strings', 'body of Japanese message',
+    'From: Japanese Strings <FromAddress@example.com>');
 
 
 =head1 DESCRIPTION

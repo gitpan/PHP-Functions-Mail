@@ -1,4 +1,7 @@
 Revision history for Perl extension PHP::Functions::Mail.
 
+0.02  Wed Jan 12 2005
+	- Change in the order of outputting Net::SMTP->from.
+	
 0.01  Wed Jan 12 2005
 	- Release
