@@ -1,14 +1,13 @@
 package PHP::Functions::Mail;
 
 use strict;
-use warnings;
 
 use vars qw(@ISA @EXPORT_OK $VERSION);
 
 require Exporter;
 @ISA = qw(Exporter);
 @EXPORT_OK = qw(mail mb_send_mail);
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 use Carp qw(carp croak);
 use Net::SMTP;
