@@ -8,7 +8,7 @@ use vars qw(@ISA @EXPORT_OK $VERSION);
 require Exporter;
 @ISA = qw(Exporter);
 @EXPORT_OK = qw(mail mb_send_mail);
-$VERSION = '0.02';
+$VERSION = '0.03';
 
 use Carp qw(carp croak);
 use Net::SMTP;
@@ -37,7 +37,8 @@ sub mail {
 	    my $name = $1;
 	    my $value = $2;
 	    my $ns_value = $value;
-	    $ns_value =~ s/[\r\n\s]/ /g;
+	    $ns_value =~ s/\s/ /g;
+	    $ns_value =~ s|\=\?ISO-2022-JP\?B\?.*?\?\=||g;
 
 	    if (uc($name) eq 'FROM') {
 		$smtp->mail(split(",", $ns_value));
@@ -54,6 +55,7 @@ sub mail {
 	$send_header .= "Subject: $subject\n"unless $in_subject;
 	$smtp->to($to);
 
+	$headers =~ s/\n\t/\t/mg;
 	foreach my $header (split("\n", $headers)) {
 	    unless ($header =~ /^([^:]+):(.+)$/) {
 		carp "header format error: $header";
@@ -62,11 +64,12 @@ sub mail {
 	    my $name = $1;
 	    my $value = $2;
 	    my $ns_value = $value;
-	    $ns_value =~ s/[\r\n\s]/ /g;
-
+	    $ns_value =~ s/\s/ /g;
+	    $ns_value =~ s|\=\?ISO-2022-JP\?B\?.*?\?\=||ig;
 	    $smtp->to(split(",", $ns_value)) if uc($name) eq 'TO';
 	    $smtp->cc(split(",", $ns_value)) if uc($name) eq 'CC';
 	    $smtp->bcc(split(",", $ns_value)) if uc($name) eq 'BCC';
+	    $value =~ s/\t/\n\t/g;
 	    $send_header .= "$name:$value\n";
 	}
 	$smtp->data;
@@ -89,19 +92,22 @@ sub mb_send_mail {
     use Jcode;
 
     my $send_header;
+    $headers =~ s/\n\t/\t/mg;
     foreach my $header (split("\n", $headers)) {
 	unless ($header =~ /^([^:]+):(.+)$/) {
 	    carp "header format error: $header";
 	    next;
 	}
-	my $name = $1;
+	my $name  = $1;
 	my $value = $2;
-	$send_header .= "$name:" . mime_encode($value) . "\n";
+	my $len   = 76 - (length($name) + 1);
+	$len = 32 if $len < 32;
+	$send_header .= "$name:" . mime_encode($value, $len) . "\n";
     }
     $send_header .= "Content-type: text/plain; charset=iso-2022-jp\n";
 
-    mail(mime_encode($to),
-	 Jcode->new($subject)->mime_encode,
+    mail(mime_encode($to, 72),
+	 mime_encode($subject, 66),
 	 Jcode->new($body)->iso_2022_jp,
 	 $send_header,
 	 $options);
@@ -110,8 +116,22 @@ sub mb_send_mail {
 sub mime_encode {
     use Jcode;
     my $str = Jcode->new(shift)->euc;
+    my $len = shift;
 
-    $str =~ s/([\x80-\xff]+)/Jcode->new($1)->mime_encode/eg;
+    $str =~ s/([\x80-\xff]+)/Jcode->new($1)->mime_encode("\n", $len)/eg;
+    $str =~ s/\n /\n\t/g;
+
+    $str =~ s|(\=\?ISO-2022-JP\?B\?)|\n$1|ig;
+    $str =~ s|(\?\=)|$1\n|ig;
+
+    $str =~ s/^\s+//m;
+    $str =~ s/\s+$//m;
+
+    $str =~ s/\n\n/\n/gm;
+    $str =~ s/\n\t\n/\n/gm;
+    $str =~ s/\n/\n\t/gm;
+    $str =~ s/\n\t$//m;
+
     return $str;
 }
 
